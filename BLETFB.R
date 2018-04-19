@@ -5,30 +5,43 @@ library(quantmod)
 library(BLCOP)
 
 #### Close data from TC2000 Convert TXT to XTS ####
-FItxt <- read.table('blbond', header = FALSE, sep = ",")
+ETFtxt <- read.table('etfb', header = FALSE, sep = ",")
 
-FIzoo <- read.zoo(FItxt, sep = ",", format = "%m/%d/%Y", split = 3)
-FIxts <- as.xts(FIzoo)
+ETFzoo <- read.zoo(ETFtxt, sep = ",", format = "%m/%d/%Y", split = 3)
+ETFxts <- as.xts(ETFzoo)
 
-FIRet <- na.omit(Return.calculate(FIxts))
+ETFRet <- na.omit(Return.calculate(ETFxts))
 
 ###Convert to Monthly Data
-monthend <- endpoints(FIRet, on = "months", k = 1)
-Ret.mo <- FIRet[monthend]
+monthend <- endpoints(ETFRet, on = "months", k = 1)
+Ret.mo <- ETFRet[monthend]
 
-CAPMbeta <- CAPM.beta(Ret.mo[,2:13], Ret.mo$AGG, .03/12)
-CAPM.roll <- na.omit(rollapply(Ret.mo[,2:13], 12, function(x) CAPM.beta(x, Ret.mo$AGG, .03/12)))
+CAPMbeta <- CAPM.beta(Ret.mo[,c(1:8,10:21)], Ret.mo$SPY, .03/12)
+CAPM.roll <- na.omit(rollapply(Ret.mo[,c(1:8,10:21)], 12, function(x) CAPM.beta(x, Ret.mo$SPY, .03/12)))
 CovMat <- cov(CAPM.roll)
 
-ExcRet <- Return.excess(Ret.mo[,2:13], Ret.mo$AGG) #mu
-ERAnnl <- Return.annualized.excess(Ret.mo[,2:13], Ret.mo$AGG)
+ExcRet <- Return.excess(Ret.mo[,c(1:8,10:21)], Ret.mo$SPY) #mu
+ERAnnl <- Return.annualized.excess(Ret.mo[,c(1:8,10:21)], Ret.mo$SPY)
 #ER.mu <- as.numeric(colMeans(ExcRet))
 
+########## Risk Premium Divided by Excess Returns########
 ###Risk Premium###
-RiskPrem <- Return.excess(Ret.mo$AGG, Rf = .029/12)
+# RiskPrem <- Return.excess(Ret.mo$SPY, Rf = .029/12)
+# PremData <- na.omit(cbind(ExcRet,RiskPrem))
+# 
+# RiskAver <- matrix(0, nrow = nrow(PremData), ncol = ncol(PremData))
+# for (i in 1:ncol(PremData)) {
+#   RiskAver[i] <- PremData[,20] / PremData[,i]
+# }
+# 
+# RiskAv.df <- as.data.frame(RiskAver)
+# rownames(RiskAv.df) <- index(PremData)
+# names(RiskAv.df) <- colnames(PremData)
+# RiskAv.x <- as.xts(RiskAv.df[,1:19])
+# CAPMCov <- cov(RiskAv.x)
 
 ##myPosterior Data##
-priorMeans <- rep(0,12) #set means to 0 for the twelve assets
+priorMeans <- rep(0,20) #set means to 0 for the twelve assets
 priorVarcov <- cov.mve(ExcRet)$cov
 
 ###Create a "pick" matrix.  Connects assets with a specific "view"
@@ -56,9 +69,12 @@ Views <- BLViews(Pick, QVect, confidences = ViewConf, assetNames = colnames(prio
 ExRetPosterior <- posteriorEst(Views, mu = priorMeans, tau = 0.025, sigma = priorVarcov)
 CAPMPosterior <- posteriorEst(Views, mu = priorMeans, tau = 0.025, sigma = CovMat)
 
+#AltCAPMPost <- posteriorEst(Views, mu = priorMeans, tau = 0.025, sigma = CAPMCov)
+
 optimalPortfolios(ExRetPosterior)
 optimalPortfolios(CAPMPosterior)
 
 #optimalPortfolios.fPort(myPosterior, constraints = 'maxW[1:12] = .2',optimizer = "minriskPortfolio", numSimulations = 100)
-#write.csv(CAPMbeta, file = "FIBeta.csv")
-#write.csv(ERAnnl, file = "FIExcRet.csv")
+
+#write.csv(CAPMbeta, file = "ETFBeta.csv")
+#write.csv(ERAnnl, file = "ETFExcRet.csv")
