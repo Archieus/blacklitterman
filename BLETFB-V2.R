@@ -17,35 +17,20 @@ monthend <- endpoints(ETFRet, on = "months", k = 1)
 Ret.mo <- ETFRet[monthend]
 
 CAPMbeta <- CAPM.beta(Ret.mo[,c(1:8,10:21)], Ret.mo$SPY, .03/12)
-CAPM.roll <- na.omit(rollapply(Ret.mo[,c(1:8,10:21)], 12, function(x) CAPM.beta(x, Ret.mo$SPY, .03/12)))
-CovMat <- cov(CAPM.roll)
-
-ExcRet <- Return.excess(Ret.mo[,c(1:8,10:21)], Ret.mo$SPY) #mu
-ERAnnl <- Return.annualized.excess(Ret.mo[,c(1:8,10:21)], Ret.mo$SPY)
-#ER.mu <- as.numeric(colMeans(ExcRet))
-
-########## Risk Premium Divided by Excess Returns########
-###Risk Premium###
-# RiskPrem <- Return.excess(Ret.mo$SPY, Rf = .029/12)
-# PremData <- na.omit(cbind(ExcRet,RiskPrem))
-# 
-# RiskAver <- matrix(0, nrow = nrow(PremData), ncol = ncol(PremData))
-# for (i in 1:ncol(PremData)) {
-#   RiskAver[i] <- PremData[,20] / PremData[,i]
-# }
-# 
-# RiskAv.df <- as.data.frame(RiskAver)
-# rownames(RiskAv.df) <- index(PremData)
-# names(RiskAv.df) <- colnames(PremData)
-# RiskAv.x <- as.xts(RiskAv.df[,1:19])
-# CAPMCov <- cov(RiskAv.x)
+#Apply Weigths to Returns of Individual Assets
+ETFEqLib <- Return.portfolio(Ret.mo[,c(1:8,10:21)], weights = as.numeric(CAPMbeta))
+#Calculate Excess Returns over Eq Lib Port
+ETFExcRet <- Return.excess(Ret.mo[,c(1:8,10:21)], ETFEqLib)
+#Create Cov Matrix of Excess Returns
+CovMat <- cov.mve(ETFExcRet)$cov
+nameList <- names(Ret.mo[,c(1:8,10:21)])
+colnames(CovMat) <- nameList
 
 ##myPosterior Data##
 priorMeans <- rep(0,20) #set means to 0 for the twelve assets
-priorVarcov <- cov.mve(ExcRet)$cov
 
 ###Create a "pick" matrix.  Connects assets with a specific "view"
-Pick <- matrix(0, ncol = ncol(priorVarcov), nrow = 6, dimnames = list(NULL,as.list(colnames(priorVarcov))))
+Pick <- matrix(0, ncol = ncol(CovMat), nrow = 6, dimnames = list(NULL,as.list(colnames(CovMat))))
 
 ###Create a Vector Q which contains information on the Excess Return for the corresponding "view"
 QVect <- c(0,0,0,0,0,0)
@@ -63,18 +48,11 @@ Pick[1,11] <- -1
 
 ViewConf <- c(.01,.01,.01,.01,.01,.01) #Between .01(No confidence) and 100(High confidence)
 
-Views <- BLViews(Pick, QVect, confidences = ViewConf, assetNames = colnames(priorVarcov))
+Views <- BLViews(Pick, QVect, confidences = ViewConf, assetNames = colnames(CovMat))
 
 ###Generate "posterior" estimates using "prior" inputs and Investors Views and confidences
-ExRetPosterior <- posteriorEst(Views, mu = priorMeans, tau = 0.025, sigma = priorVarcov)
 CAPMPosterior <- posteriorEst(Views, mu = priorMeans, tau = 0.025, sigma = CovMat)
 
-#AltCAPMPost <- posteriorEst(Views, mu = priorMeans, tau = 0.025, sigma = CAPMCov)
-
-optimalPortfolios(ExRetPosterior)
 optimalPortfolios(CAPMPosterior)
 
 #optimalPortfolios.fPort(myPosterior, constraints = 'maxW[1:12] = .2',optimizer = "minriskPortfolio", numSimulations = 100)
-
-#write.csv(CAPMbeta, file = "ETFBeta.csv")
-#write.csv(ERAnnl, file = "ETFExcRet.csv")
